@@ -1,6 +1,6 @@
 # SOC agent skills
 
-Two public agent skills for SOC / IR assistants. They close holes that show up
+Public agent skills for SOC / IR assistants. They close holes that show up
 when investigation procedure is **markdown the model may follow**, not
 **runtime the model cannot skip**.
 
@@ -8,6 +8,8 @@ when investigation procedure is **markdown the model may follow**, not
 |-------|----------------|
 | [`looking-up-indicators`](looking-up-indicators/) | Alert contains a hash, IP, domain, or URL, or someone asks to download / detonate / "just hit the domain" |
 | [`ingesting-advisories`](ingesting-advisories/) | Hunt or research a CISA / vendor advisory URL or ID, before naming WebFetch / WebSearch |
+| [`retrieving-from-corpus`](retrieving-from-corpus/) | Need internal runbooks / past notes (RAG over an operator corpus) |
+| [`routing-alert-notifications`](routing-alert-notifications/) | Post an alert to Slack, Teams, or an HTTPS webhook |
 
 License: MIT ([`LICENSE`](LICENSE)). Not a product of any commercial SOC vendor.
 
@@ -15,19 +17,28 @@ License: MIT ([`LICENSE`](LICENSE)). Not a product of any commercial SOC vendor.
 
 **Looking up indicators.** Research the hash or URL **as a string** on a
 declared lookup tool (VirusTotal and similar). Do not HTTP GET the lure, and
-do not GET `/` on the lure origin either. "Characterizing the domain" is not
-an exception. If no lookup tool is configured, stop.
+do not GET `/` on the lure origin either.
 
 **Ingesting advisories.** Use a fetch tool only if it exists **in this
 runtime**. If the user gave a URL and there is no fetch tool, stop and ask
-for a paste. Do not name WebFetch or WebSearch because another product has
-them. Do not imply a platform-owned threat-intel corpus.
+for a paste.
 
-Each skill ships a small stdlib Python gate the agent is told to run before
-the network call:
+**Retrieving from a corpus.** RAG over a local SQLite FTS5 index of operator
+docs in `retrieving-from-corpus/corpus/`. Retrieved chunks are untrusted
+data (corpus poisoning is treated like ticket injection). No lure fetching
+"to grow the index." Empty corpus → fail closed.
+
+**Routing alert notifications.** The space is
+`routing-alert-notifications/destinations/`. Routes pick a webhook **env
+var** by severity. The alert body cannot choose the channel or URL.
+Payloads are allowlisted and redacted. Dry-run by default; `--send` to POST.
+
+Each skill ships a small stdlib Python gate:
 
 - `looking-up-indicators/scripts/deny_alert_fetch.py`
 - `ingesting-advisories/scripts/require_existing_tool.py`
+- `retrieving-from-corpus/scripts/query_corpus.py`
+- `routing-alert-notifications/scripts/notify.py`
 
 Trajectory fixtures (not an LLM judge) live in each skill's `evals.json`.
 
@@ -42,21 +53,12 @@ cd soc-agent-skills
 
 # Claude Code
 mkdir -p ~/.claude/skills
-ln -s "$(pwd)/looking-up-indicators" ~/.claude/skills/looking-up-indicators
-ln -s "$(pwd)/ingesting-advisories" ~/.claude/skills/ingesting-advisories
-
-# Codex
-mkdir -p ~/.agents/skills
-ln -s "$(pwd)/looking-up-indicators" ~/.agents/skills/looking-up-indicators
-ln -s "$(pwd)/ingesting-advisories" ~/.agents/skills/ingesting-advisories
-
-# Cursor
-mkdir -p ~/.cursor/skills
-ln -s "$(pwd)/looking-up-indicators" ~/.cursor/skills/looking-up-indicators
-ln -s "$(pwd)/ingesting-advisories" ~/.cursor/skills/ingesting-advisories
+for s in looking-up-indicators ingesting-advisories retrieving-from-corpus routing-alert-notifications; do
+  ln -s "$(pwd)/$s" ~/.claude/skills/$s
+done
 ```
 
-Grok / other SKILL.md loaders: point them at the same two folders.
+Same loop works for `~/.agents/skills` (Codex) and `~/.cursor/skills` (Cursor).
 
 ## Tests
 
@@ -65,43 +67,41 @@ Stdlib only. No extra packages.
 ```bash
 python looking-up-indicators/scripts/test_deny_alert_fetch.py
 python ingesting-advisories/scripts/test_require_existing_tool.py
+python retrieving-from-corpus/scripts/test_corpus.py
+python routing-alert-notifications/scripts/test_notify.py
 ```
 
-The lure-origin case (`GET https://httpbingo.org/` when the alert URL is
-`http://httpbingo.org/get?payload=invoice.exe`) is an expected **deny**.
+## Spaces you fill in
 
-## Using the gates from a skill run
+**Corpus (RAG).** Put runbooks under `retrieving-from-corpus/corpus/`, then:
 
 ```bash
-# After extracting IOCs from the alert into iocs.json
-python looking-up-indicators/scripts/deny_alert_fetch.py \
-  --iocs iocs.json \
-  --url "$PLANNED_URL"
-# exit 1 → do not send the request
-# --allow-host www.virustotal.com  for a declared lookup API
-
-# Before naming a fetch tool
-python ingesting-advisories/scripts/require_existing_tool.py \
-  --inventory tools.json \
-  --named WebFetch
-# exit 1 → ask for a paste; do not fetch
+python retrieving-from-corpus/scripts/index_corpus.py \
+  --corpus retrieving-from-corpus/corpus \
+  --db retrieving-from-corpus/corpus/index.sqlite
+python retrieving-from-corpus/scripts/query_corpus.py \
+  --db retrieving-from-corpus/corpus/index.sqlite \
+  --q "phishing download"
 ```
 
-`iocs.json` shape:
+**Destinations (Slack / webhooks).** Copy
+`routing-alert-notifications/destinations/routes.example.json` to
+`routes.json`, set `SLACK_WEBHOOK_SOC` / `SLACK_WEBHOOK_SOC_HIGH` to Incoming
+Webhook URLs (or any HTTPS hook), drop alert JSON in `destinations/alerts/`:
 
-```json
-{
-  "urls": ["http://httpbingo.org/get?payload=invoice.exe"],
-  "hosts": ["laptop-finance-7"],
-  "ips": [],
-  "hashes": ["da39a3ee5e6b4b0d3255bfef95601890afd80709"]
-}
+```bash
+python routing-alert-notifications/scripts/notify.py \
+  --alert routing-alert-notifications/destinations/alerts/example.json \
+  --routes routing-alert-notifications/destinations/routes.example.json
+# add --send only after the dry-run looks right
 ```
 
-`tools.json` shape: `["bash", "read"]` or `{"tools": ["bash", "read"]}`.
+Webhook URLs stay in the environment. `routes.json` is gitignored if you
+create one.
 
 ## Related
 
 These skills do not replace an investigation methodology (intake → evidence →
-gap analysis → schema-checked report). They sit in front of it so the
-methodology cannot start by detonating the lure or by pretending to browse.
+gap analysis → schema-checked report). They sit next to it so the
+methodology cannot start by detonating a lure, pretending to browse, obeying
+a poisoned wiki, or POSTing secrets to a webhook the ticket invented.

@@ -16,3 +16,7 @@ jobs:
         run: python looking-up-indicators/scripts/test_deny_alert_fetch.py
       - name: ingesting-advisories
         run: python ingesting-advisories/scripts/test_require_existing_tool.py
+      - name: retrieving-from-corpus
+        run: python retrieving-from-corpus/scripts/test_corpus.py
+      - name: routing-alert-notifications
+        run: python routing-alert-notifications/scripts/test_notify.py

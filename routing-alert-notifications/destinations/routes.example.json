@@ -1,0 +1,18 @@
+{
+  "routes": [
+    {
+      "match": {"severity": ["critical", "high"]},
+      "webhook_env": "SLACK_WEBHOOK_SOC_HIGH",
+      "channel": "#soc-high"
+    },
+    {
+      "match": {"severity": ["medium", "low", "info"]},
+      "webhook_env": "SLACK_WEBHOOK_SOC",
+      "channel": "#soc"
+    }
+  ],
+  "default": {
+    "webhook_env": "SLACK_WEBHOOK_SOC",
+    "channel": "#soc"
+  }
+}

@@ -6,3 +6,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+corpus/index.sqlite
+**/index.sqlite
+routing-alert-notifications/destinations/routes.json
+*.local.json
