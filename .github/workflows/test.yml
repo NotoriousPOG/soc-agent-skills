@@ -1,0 +1,18 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: looking-up-indicators
+        run: python looking-up-indicators/scripts/test_deny_alert_fetch.py
+      - name: ingesting-advisories
+        run: python ingesting-advisories/scripts/test_require_existing_tool.py
