@@ -20,3 +20,5 @@ jobs:
         run: python retrieving-from-corpus/scripts/test_corpus.py
       - name: routing-alert-notifications
         run: python routing-alert-notifications/scripts/test_notify.py
+      - name: investigation skill packages
+        run: python scripts/check_investigation_skills.py

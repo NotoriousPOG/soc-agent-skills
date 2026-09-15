@@ -10,6 +10,14 @@ when investigation procedure is **markdown the model may follow**, not
 | [`ingesting-advisories`](ingesting-advisories/) | Hunt or research a CISA / vendor advisory URL or ID, before naming WebFetch / WebSearch |
 | [`retrieving-from-corpus`](retrieving-from-corpus/) | Need internal runbooks / past notes (RAG over an operator corpus) |
 | [`routing-alert-notifications`](routing-alert-notifications/) | Post an alert to Slack, Teams, or an HTTPS webhook |
+| [`triaging-security-alerts`](triaging-security-alerts/) | Assign evidence-backed disposition, priority, and escalation |
+| [`investigating-aws-incidents`](investigating-aws-incidents/) | Investigate CloudTrail identity, credential, and resource activity |
+| [`engineering-detections`](engineering-detections/) | Adapt detection hypotheses to verified telemetry and test them |
+| [`triaging-malware-metadata`](triaging-malware-metadata/) | Assess existing file metadata and reports without acquiring or executing samples |
+| [`correlating-security-evidence`](correlating-security-evidence/) | Connect scoped entities and timelines without treating shared IPs as proof |
+| [`investigating-authentication`](investigating-authentication/) | Distinguish session failures, brute force, spraying, and suspicious success |
+| [`verifying-response-actions`](verifying-response-actions/) | Verify authorized containment outcomes before claiming enforcement |
+| [`evaluating-soc-analysts`](evaluating-soc-analysts/) | Measure grounded accuracy, unsafe actions, and cost with labeled cases |
 
 License: MIT ([`LICENSE`](LICENSE)). Not a product of any commercial SOC vendor.
 
@@ -33,7 +41,7 @@ data (corpus poisoning is treated like ticket injection). No lure fetching
 var** by severity. The alert body cannot choose the channel or URL.
 Payloads are allowlisted and redacted. Dry-run by default; `--send` to POST.
 
-Each skill ships a small stdlib Python gate:
+The original four boundary skills ship small stdlib Python gates:
 
 - `looking-up-indicators/scripts/deny_alert_fetch.py`
 - `ingesting-advisories/scripts/require_existing_tool.py`
@@ -42,9 +50,17 @@ Each skill ships a small stdlib Python gate:
 
 Trajectory fixtures (not an LLM judge) live in each skill's `evals.json`.
 
+The eight investigation additions are original Markdown procedures with JSON
+trajectory fixtures. They import no third-party executable code, installers, or
+malware samples. They do not grant tools or automatically enforce their prose:
+applications must implement schema validation, capability limits, and action gates.
+Source reviews and limitations are recorded in `docs/SECURITY-REVIEW-2026-09-15.md`.
+This repository update does not deploy these eight skills into the Wazuh worker.
+
 ## Install
 
-Each folder is a self-contained skill (`SKILL.md` + `RULES.md` + `scripts/`).
+Each skill folder contains `SKILL.md`, `RULES.md`, and `evals.json`; the four
+boundary skills also contain `scripts/`.
 Symlink or copy into the skills directory your agent reads.
 
 ```bash
@@ -53,8 +69,9 @@ cd soc-agent-skills
 
 # Claude Code
 mkdir -p ~/.claude/skills
-for s in looking-up-indicators ingesting-advisories retrieving-from-corpus routing-alert-notifications; do
-  ln -s "$(pwd)/$s" ~/.claude/skills/$s
+for entry in */SKILL.md; do
+  s="${entry%/SKILL.md}"
+  ln -s "$(pwd)/$s" "$HOME/.claude/skills/$s"
 done
 ```
 
@@ -69,6 +86,7 @@ python looking-up-indicators/scripts/test_deny_alert_fetch.py
 python ingesting-advisories/scripts/test_require_existing_tool.py
 python retrieving-from-corpus/scripts/test_corpus.py
 python routing-alert-notifications/scripts/test_notify.py
+python scripts/check_investigation_skills.py
 ```
 
 ## Spaces you fill in
@@ -101,7 +119,9 @@ create one.
 
 ## Related
 
-These skills do not replace an investigation methodology (intake → evidence →
-gap analysis → schema-checked report). They sit next to it so the
-methodology cannot start by detonating a lure, pretending to browse, obeying
-a poisoned wiki, or POSTing secrets to a webhook the ticket invented.
+Load the relevant investigation skill alongside the applicable boundary skills.
+Keep system policy compact, retrieve only the relevant procedure, and use JSON
+for validated input/output contracts. YAML frontmatter describes skill discovery;
+it does not establish that YAML is more token-efficient for a model. The evaluation
+skill requires an equivalent-data comparison using the selected model's tokenizer
+or actual usage before claiming savings.
